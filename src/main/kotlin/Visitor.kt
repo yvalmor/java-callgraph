@@ -2,6 +2,7 @@ package yvalmor
 
 import com.github.javaparser.ast.PackageDeclaration
 import com.github.javaparser.ast.body.AnnotationDeclaration
+import com.github.javaparser.ast.body.CallableDeclaration
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration
 import com.github.javaparser.ast.body.ConstructorDeclaration
 import com.github.javaparser.ast.body.EnumDeclaration
@@ -21,14 +22,11 @@ class Visitor : ModifierVisitor<Void>() {
 
     private val packageStack = Stack<PackageDeclaration>()
     private val classStack = Stack<TypeDeclaration<*>>()
-    private val methodStack = Stack<MethodDeclaration>()
-    private val constructorStack = Stack<ConstructorDeclaration>()
+    private val methodStack = Stack<CallableDeclaration<*>>()
 
     private val clazzMap = HashMap<TypeDeclaration<*>, PackageDeclaration>()
-    private val methodDeclarationMap = HashMap<MethodDeclaration, TypeDeclaration<*>>()
-    private val constructorDeclarationMap = HashMap<ConstructorDeclaration, TypeDeclaration<*>>()
-    private val methodCallMap = HashMap<MethodDeclaration, MutableSet<MethodCallExpr>>()
-    private val constructorCallMap = HashMap<ConstructorDeclaration, MutableSet<MethodCallExpr>>()
+    private val methodDeclarationMap = HashMap<CallableDeclaration<*>, TypeDeclaration<*>>()
+    private val methodCallMap = HashMap<CallableDeclaration<*>, MutableSet<MethodCallExpr>>()
     private val staticCallMap = HashMap<TypeDeclaration<*>, MutableSet<MethodCallExpr>>()
 
     override fun visit(n: PackageDeclaration?, arg: Void?): Visitable {
@@ -127,13 +125,13 @@ class Visitor : ModifierVisitor<Void>() {
 
     override fun visit(n: ConstructorDeclaration, arg: Void?): Visitable {
         logger.debug { "Visiting constructor declaration: ${n.nameAsString}" }
-        constructorStack.push(n)
-        constructorDeclarationMap[n] = classStack.peek()
+        methodStack.push(n)
+        methodDeclarationMap[n] = classStack.peek()
 
         val result: Visitable = super.visit(n, arg)
 
         logger.debug { "Leaving constructor declaration: ${n.nameAsString}" }
-        constructorStack.pop()
+        methodStack.pop()
 
         return result
     }
@@ -143,16 +141,8 @@ class Visitor : ModifierVisitor<Void>() {
 
         if (!methodStack.isEmpty()) {
             logger.debug { "Method call in method declaration: ${methodStack.peek().nameAsString}" }
-            val methodDeclaration: MethodDeclaration = methodStack.peek()
+            val methodDeclaration: CallableDeclaration<*> = methodStack.peek()
             methodCallMap.computeIfAbsent(methodDeclaration) { HashSet() }.add(n)
-
-            return super.visit(n, arg)
-        }
-
-        if (!constructorStack.empty()) {
-            logger.debug { "Method call in constructor declaration: ${constructorStack.peek().nameAsString}" }
-            val constructorDeclaration: ConstructorDeclaration = constructorStack.peek()
-            constructorCallMap.computeIfAbsent(constructorDeclaration) { HashSet() }.add(n)
 
             return super.visit(n, arg)
         }
@@ -165,12 +155,11 @@ class Visitor : ModifierVisitor<Void>() {
     }
 
     fun print(javaParserFacade: JavaParserFacade) {
-        constructorDeclarationMap.keys.forEach { p -> printConstructorDeclaration(p, javaParserFacade) }
         methodDeclarationMap.keys.forEach { p -> printMethodDeclaration(p, javaParserFacade) }
         println()
     }
 
-    private fun printMethodDeclaration(methodDeclaration: MethodDeclaration, javaParserFacade: JavaParserFacade) {
+    private fun printMethodDeclaration(methodDeclaration: CallableDeclaration<*>, javaParserFacade: JavaParserFacade) {
         val classDeclaration: TypeDeclaration<*> = methodDeclarationMap[methodDeclaration]!!
         val packageDeclaration: PackageDeclaration = clazzMap[classDeclaration]!!
 
@@ -181,20 +170,15 @@ class Visitor : ModifierVisitor<Void>() {
         println()
     }
 
-    private fun printConstructorDeclaration(constructorDeclaration: ConstructorDeclaration, javaParserFacade: JavaParserFacade) {
-        val classDeclaration: TypeDeclaration<*> = constructorDeclarationMap[constructorDeclaration]!!
-        val packageDeclaration: PackageDeclaration = clazzMap[classDeclaration]!!
-
-        println("${packageDeclaration.nameAsString}.${classDeclaration.nameAsString}.${constructorDeclaration.nameAsString}:")
-
-        constructorCallMap[constructorDeclaration]?.forEach { p -> printMethodCall(p, javaParserFacade) }
-
-        println()
-    }
-
     private fun printMethodCall(methodCallExpr: MethodCallExpr, javaParserFacade: JavaParserFacade) {
         val methodRef: ResolvedMethodDeclaration = javaParserFacade.solve(methodCallExpr).correspondingDeclaration
         println("\t${methodRef.qualifiedName}(${methodCallExpr.arguments.joinToString()})")
+        try {
+            val methodRef: ResolvedMethodDeclaration = javaParserFacade.solve(methodCallExpr).correspondingDeclaration
+            println("\t${methodRef.qualifiedName}(${methodRef.typeParameters.joinToString(", ") { it.qualifiedName }})")
+        } catch (exception: Exception) {
+            println("\t${methodCallExpr.nameAsString}(${methodCallExpr.arguments.joinToString(", ")})")
+        }
     }
 
     private fun <T> Iterable<T>.joinToString(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = ""): String {
