@@ -5,10 +5,17 @@ import com.github.javaparser.ast.CompilationUnit
 import com.github.javaparser.symbolsolver.JavaSymbolSolver
 import com.github.javaparser.symbolsolver.javaparsermodel.JavaParserFacade
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver
+import com.github.javaparser.symbolsolver.resolution.typesolvers.JarTypeSolver
 import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeSolver
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver
 import com.github.javaparser.utils.SourceRoot
+import mu.KotlinLogging
 import java.nio.file.Path
+import kotlin.io.path.isDirectory
+
+class Main
+
+private val logger = KotlinLogging.logger(Main::class.java.name)
 
 fun main(args: Array<String>) {
     if (args.size <= 1) {
@@ -20,13 +27,47 @@ fun main(args: Array<String>) {
     val sourceRoot = SourceRoot(path)
 
     val combinedTypeSolver = CombinedTypeSolver()
-    combinedTypeSolver.add(ReflectionTypeSolver())
-    combinedTypeSolver.add(JavaParserTypeSolver(path))
+    addTypeSolvers(combinedTypeSolver, path)
 
     sourceRoot.parserConfiguration.setSymbolResolver(JavaSymbolSolver(combinedTypeSolver))
     sourceRoot.parserConfiguration.setLanguageLevel(getJavaVersion(args))
 
     processSourceRoot(sourceRoot, JavaParserFacade.get(combinedTypeSolver))
+}
+
+fun addTypeSolvers(combinedTypeSolver: CombinedTypeSolver, path: Path) {
+    combinedTypeSolver.add(ReflectionTypeSolver())
+    combinedTypeSolver.add(JavaParserTypeSolver(path))
+
+    addMavenLibrariesSolvers(combinedTypeSolver)
+}
+
+fun addMavenLibrariesSolvers(combinedTypeSolver: CombinedTypeSolver) {
+    val projectRepository = System.getenv("MAVEN_REPOSITORY")
+    val homeRepository = System.getProperty("user.home")
+
+    if (projectRepository == null && homeRepository == null)
+        throw IllegalArgumentException("Maven repository not found")
+
+    if (projectRepository != null)
+        addLibrarySolver(combinedTypeSolver, Path.of(projectRepository))
+
+    val mavenRepositoryResolved = Path.of(homeRepository).resolve(".m2/repository")
+    if (mavenRepositoryResolved.toFile().exists())
+        addLibrarySolver(combinedTypeSolver, mavenRepositoryResolved)
+}
+
+fun addLibrarySolver(combinedTypeSolver: CombinedTypeSolver, path: Path) {
+    if (!path.isDirectory()) return
+
+    path.toFile().listFiles()?.forEach {
+        if (it.isDirectory)
+            addLibrarySolver(combinedTypeSolver, it.toPath())
+        else if (it.name.endsWith(".jar")) {
+            logger.debug { "Adding jar to type solver: ${it.toPath()}" }
+            combinedTypeSolver.add(JarTypeSolver(it.toPath()))
+        }
+    }
 }
 
 fun getJavaVersion(args: Array<String>): ParserConfiguration.LanguageLevel {
