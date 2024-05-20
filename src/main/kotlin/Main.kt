@@ -11,8 +11,8 @@ import com.github.javaparser.utils.SourceRoot
 import java.nio.file.Path
 
 fun main(args: Array<String>) {
-    if (args.size != 1) {
-        println("Usage: java -jar <path-to-jar> <path-to-src-directory>")
+    if (args.size <= 1) {
+        println("Usage: java -jar <path-to-jar> <path-to-src-directory> [project-java-version]")
         return
     }
 
@@ -24,9 +24,36 @@ fun main(args: Array<String>) {
     combinedTypeSolver.add(JavaParserTypeSolver(path))
 
     sourceRoot.parserConfiguration.setSymbolResolver(JavaSymbolSolver(combinedTypeSolver))
-    sourceRoot.parserConfiguration.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_11)
+    sourceRoot.parserConfiguration.setLanguageLevel(getJavaVersion(args))
 
     processSourceRoot(sourceRoot, JavaParserFacade.get(combinedTypeSolver))
+}
+
+fun getJavaVersion(args: Array<String>): ParserConfiguration.LanguageLevel {
+    if (args.size < 2) {
+        return ParserConfiguration.LanguageLevel.JAVA_11
+    }
+
+    when (val version: String = args[1]) {
+        "1" -> return ParserConfiguration.LanguageLevel.JAVA_1_1
+        "2" -> return ParserConfiguration.LanguageLevel.JAVA_1_2
+        "3" -> return ParserConfiguration.LanguageLevel.JAVA_1_3
+        "4" -> return ParserConfiguration.LanguageLevel.JAVA_1_4
+        "5" -> return ParserConfiguration.LanguageLevel.JAVA_5
+        "6" -> return ParserConfiguration.LanguageLevel.JAVA_6
+        "7" -> return ParserConfiguration.LanguageLevel.JAVA_7
+        "8" -> return ParserConfiguration.LanguageLevel.JAVA_8
+        "9" -> return ParserConfiguration.LanguageLevel.JAVA_9
+        "10" -> return ParserConfiguration.LanguageLevel.JAVA_10
+        "11" -> return ParserConfiguration.LanguageLevel.JAVA_11
+        "12" -> return ParserConfiguration.LanguageLevel.JAVA_12
+        "13" -> return ParserConfiguration.LanguageLevel.JAVA_13
+        "14" -> return ParserConfiguration.LanguageLevel.JAVA_14
+        "15" -> return ParserConfiguration.LanguageLevel.JAVA_15
+        "16" -> return ParserConfiguration.LanguageLevel.JAVA_16
+        "17" -> return ParserConfiguration.LanguageLevel.JAVA_17
+        else -> throw IllegalArgumentException("Unsupported Java version: $version")
+    }
 }
 
 fun processSourceRoot(sourceRoot: SourceRoot, javaParserFacade: JavaParserFacade) {
