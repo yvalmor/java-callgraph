@@ -1,14 +1,7 @@
 package yvalmor
 
 import com.github.javaparser.ast.PackageDeclaration
-import com.github.javaparser.ast.body.AnnotationDeclaration
-import com.github.javaparser.ast.body.CallableDeclaration
-import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration
-import com.github.javaparser.ast.body.ConstructorDeclaration
-import com.github.javaparser.ast.body.EnumDeclaration
-import com.github.javaparser.ast.body.MethodDeclaration
-import com.github.javaparser.ast.body.RecordDeclaration
-import com.github.javaparser.ast.body.TypeDeclaration
+import com.github.javaparser.ast.body.*
 import com.github.javaparser.ast.expr.MethodCallExpr
 import com.github.javaparser.ast.visitor.ModifierVisitor
 import com.github.javaparser.ast.visitor.Visitable
@@ -171,12 +164,11 @@ class Visitor : ModifierVisitor<Void>() {
     }
 
     private fun printMethodCall(methodCallExpr: MethodCallExpr, javaParserFacade: JavaParserFacade) {
-        val methodRef: ResolvedMethodDeclaration = javaParserFacade.solve(methodCallExpr).correspondingDeclaration
-        println("\t${methodRef.qualifiedName}(${methodCallExpr.arguments.joinToString()})")
         try {
             val methodRef: ResolvedMethodDeclaration = javaParserFacade.solve(methodCallExpr).correspondingDeclaration
             println("\t${methodRef.qualifiedName}(${methodRef.typeParameters.joinToString(", ") { it.qualifiedName }})")
         } catch (exception: Exception) {
+            logger.error { "Failed to resolve method call: ${methodCallExpr.nameAsString} [${exception.cause}]" }
             println("\t${methodCallExpr.nameAsString}(${methodCallExpr.arguments.joinToString(", ")})")
         }
     }

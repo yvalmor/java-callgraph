@@ -19,35 +19,52 @@ private val logger = KotlinLogging.logger(Main::class.java.name)
 
 fun main(args: Array<String>) {
     if (args.size <= 1) {
-        println("Usage: java -jar <path-to-jar> <path-to-src-directory> [project-java-version]")
+        logger.error { "Usage: java -jar <path-to-jar> <path-to-src-directory> [project-java-version]" }
         return
     }
 
     val path: Path = Path.of(args[0])
-    val sourceRoot = SourceRoot(path)
+    if (!path.toFile().exists()) {
+        logger.error { "Path does not exist: $path" }
+        return
+    }
 
+    val sourceRoot = SourceRoot(path)
     val combinedTypeSolver = CombinedTypeSolver()
-    addTypeSolvers(combinedTypeSolver, path)
+    if (!addTypeSolvers(combinedTypeSolver, path)) {
+        logger.error { "Failed to add type solvers" }
+        return
+    }
 
     sourceRoot.parserConfiguration.setSymbolResolver(JavaSymbolSolver(combinedTypeSolver))
-    sourceRoot.parserConfiguration.setLanguageLevel(getJavaVersion(args))
+
+    val javaVersion = getJavaVersion(args)
+    if (javaVersion == null) {
+        logger.error { "Invalid Java version" }
+        return
+    }
+
+    logger.info { "Java version: $javaVersion" }
+    sourceRoot.parserConfiguration.setLanguageLevel(javaVersion)
 
     processSourceRoot(sourceRoot, JavaParserFacade.get(combinedTypeSolver))
 }
 
-fun addTypeSolvers(combinedTypeSolver: CombinedTypeSolver, path: Path) {
+fun addTypeSolvers(combinedTypeSolver: CombinedTypeSolver, path: Path): Boolean {
     combinedTypeSolver.add(ReflectionTypeSolver())
     combinedTypeSolver.add(JavaParserTypeSolver(path))
 
-    addMavenLibrariesSolvers(combinedTypeSolver)
+    return addMavenLibrariesSolvers(combinedTypeSolver)
 }
 
-fun addMavenLibrariesSolvers(combinedTypeSolver: CombinedTypeSolver) {
+fun addMavenLibrariesSolvers(combinedTypeSolver: CombinedTypeSolver): Boolean {
     val projectRepository = System.getenv("MAVEN_REPOSITORY")
     val homeRepository = System.getProperty("user.home")
 
-    if (projectRepository == null && homeRepository == null)
-        throw IllegalArgumentException("Maven repository not found")
+    if (projectRepository == null && homeRepository == null) {
+        logger.error { "Maven repository not found" }
+        return false
+    }
 
     if (projectRepository != null)
         addLibrarySolver(combinedTypeSolver, Path.of(projectRepository))
@@ -55,6 +72,8 @@ fun addMavenLibrariesSolvers(combinedTypeSolver: CombinedTypeSolver) {
     val mavenRepositoryResolved = Path.of(homeRepository).resolve(".m2/repository")
     if (mavenRepositoryResolved.toFile().exists())
         addLibrarySolver(combinedTypeSolver, mavenRepositoryResolved)
+
+    return true
 }
 
 fun addLibrarySolver(combinedTypeSolver: CombinedTypeSolver, path: Path) {
@@ -64,18 +83,18 @@ fun addLibrarySolver(combinedTypeSolver: CombinedTypeSolver, path: Path) {
         if (it.isDirectory)
             addLibrarySolver(combinedTypeSolver, it.toPath())
         else if (it.name.endsWith(".jar")) {
-            logger.debug { "Adding jar to type solver: ${it.toPath()}" }
+            logger.trace { "Adding jar to type solver: ${it.toPath()}" }
             combinedTypeSolver.add(JarTypeSolver(it.toPath()))
         }
     }
 }
 
-fun getJavaVersion(args: Array<String>): ParserConfiguration.LanguageLevel {
+fun getJavaVersion(args: Array<String>): ParserConfiguration.LanguageLevel? {
     if (args.size < 2) {
         return ParserConfiguration.LanguageLevel.JAVA_11
     }
 
-    when (val version: String = args[1]) {
+    when (args[1]) {
         "1" -> return ParserConfiguration.LanguageLevel.JAVA_1_1
         "2" -> return ParserConfiguration.LanguageLevel.JAVA_1_2
         "3" -> return ParserConfiguration.LanguageLevel.JAVA_1_3
@@ -93,13 +112,14 @@ fun getJavaVersion(args: Array<String>): ParserConfiguration.LanguageLevel {
         "15" -> return ParserConfiguration.LanguageLevel.JAVA_15
         "16" -> return ParserConfiguration.LanguageLevel.JAVA_16
         "17" -> return ParserConfiguration.LanguageLevel.JAVA_17
-        else -> throw IllegalArgumentException("Unsupported Java version: $version")
+        else -> return null
     }
 }
 
 fun processSourceRoot(sourceRoot: SourceRoot, javaParserFacade: JavaParserFacade) {
     val visitors: MutableList<Visitor> = mutableListOf()
 
+    logger.info { "Parsing source root: ${sourceRoot.root}"}
     sourceRoot.tryToParse()
         .forEach {
             it.ifSuccessful { cu: CompilationUnit ->
@@ -110,5 +130,6 @@ fun processSourceRoot(sourceRoot: SourceRoot, javaParserFacade: JavaParserFacade
             }
         }
 
+    logger.info { "Starting callgraph computation" }
     visitors.forEach { it.print(javaParserFacade) }
 }
