@@ -1,63 +1,46 @@
 package yvalmor
 
+import com.github.javaparser.ParserConfiguration
 import com.github.javaparser.ast.CompilationUnit
-import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration
-import com.github.javaparser.ast.body.MethodDeclaration
-import com.github.javaparser.ast.expr.MethodCallExpr
-import com.github.javaparser.ast.visitor.ModifierVisitor
-import com.github.javaparser.ast.visitor.Visitable
-import com.github.javaparser.utils.CodeGenerationUtils
+import com.github.javaparser.symbolsolver.JavaSymbolSolver
+import com.github.javaparser.symbolsolver.javaparsermodel.JavaParserFacade
+import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver
+import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeSolver
+import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver
 import com.github.javaparser.utils.SourceRoot
-import java.util.Stack
+import java.nio.file.Path
 
-class Main
-
-fun main() {
-    val sourceRoot = SourceRoot(CodeGenerationUtils.mavenModuleRoot(Main::class.java).resolve("src/main/resources"))
-    val cu: CompilationUnit = sourceRoot.parse("", "Test.java")
-    val classStack = Stack<ClassOrInterfaceDeclaration>()
-    val stack = Stack<Pair<ClassOrInterfaceDeclaration, MethodDeclaration>>()
-    val map = HashMap<Pair<ClassOrInterfaceDeclaration, MethodDeclaration>, MutableSet<String>>()
-
-    val modifierVisitor = object : ModifierVisitor<Void>() {
-        override fun visit(n: ClassOrInterfaceDeclaration, arg: Void?): Visitable {
-            classStack.push(n)
-            val result: Visitable = super.visit(n, arg)
-            classStack.pop()
-
-            return result
-        }
-
-        override fun visit(n: MethodDeclaration, arg: Void?): Visitable {
-            stack.push(Pair(classStack.peek(), n))
-            val result: Visitable = super.visit(n, arg)
-            stack.pop()
-
-            return result
-        }
-
-        override fun visit(n: MethodCallExpr, arg: Void?): Visitable {
-            val currentCalls: MutableSet<String> = map[stack.peek()] ?: mutableSetOf()
-            currentCalls.add(n.toString())
-
-            map[stack.peek()] = currentCalls
-
-            return super.visit(n, arg)
-        }
+fun main(args: Array<String>) {
+    if (args.size != 1) {
+        println("Usage: java -jar <path-to-jar> <path-to-src-directory>")
+        return
     }
 
-    cu.accept(modifierVisitor, null)
+    val path: Path = Path.of(args[0])
+    val sourceRoot = SourceRoot(path)
 
-    map.forEach {
-        val clazz = it.key.first
-        val method = it.key.second
+    val combinedTypeSolver = CombinedTypeSolver()
+    combinedTypeSolver.add(ReflectionTypeSolver())
+    combinedTypeSolver.add(JavaParserTypeSolver(path))
 
-        print("${clazz.name}.${method.name}(")
-        method.parameters.forEach { p -> print("${p.name}") }
-        println("):")
+    sourceRoot.parserConfiguration.setSymbolResolver(JavaSymbolSolver(combinedTypeSolver))
+    sourceRoot.parserConfiguration.setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_11)
 
-        it.value.forEach { value ->
-            println("\t${value}")
+    processSourceRoot(sourceRoot, JavaParserFacade.get(combinedTypeSolver))
+}
+
+fun processSourceRoot(sourceRoot: SourceRoot, javaParserFacade: JavaParserFacade) {
+    val visitors: MutableList<Visitor> = mutableListOf()
+
+    sourceRoot.tryToParse()
+        .forEach {
+            it.ifSuccessful { cu: CompilationUnit ->
+                val visitor = Visitor()
+                cu.accept(visitor, null)
+
+                visitors.add(visitor)
+            }
         }
-    }
+
+    visitors.forEach { it.print(javaParserFacade) }
 }
