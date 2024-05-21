@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.parameters.arguments.multiple
 import com.github.ajalt.clikt.parameters.arguments.unique
 import com.github.ajalt.clikt.parameters.groups.provideDelegate
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.help
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
@@ -46,6 +47,10 @@ class Cli : CliktCommand(
         .default(LanguageLevel.JAVA_18)
 
     private val libraryOptions by LibraryOptions()
+
+    private val dotOuptut by option("--dot-output")
+        .help("Whether to output the callgraph in dot format")
+        .flag(default = false)
 
     private val outputFile: File? by option("-o", "--output")
         .help("Output file to write the results to")
@@ -124,6 +129,6 @@ class Cli : CliktCommand(
         }
 
         logger.info { "Starting callgraph computation" }
-        Printer.print(javaParserFacade)
+        Printer.print(javaParserFacade, dotOuptut)
     }
 }

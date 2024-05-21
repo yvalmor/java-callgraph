@@ -3,6 +3,7 @@ package yvalmor.parser
 import com.github.javaparser.ast.PackageDeclaration
 import com.github.javaparser.ast.body.*
 import com.github.javaparser.ast.expr.MethodCallExpr
+import com.github.javaparser.ast.expr.ObjectCreationExpr
 import com.github.javaparser.ast.visitor.ModifierVisitor
 import com.github.javaparser.ast.visitor.Visitable
 import mu.KotlinLogging
@@ -137,6 +138,24 @@ class Visitor : ModifierVisitor<Void>() {
         logger.debug { "Method call in class declaration: ${classStack.peek().nameAsString}" }
         val classDeclaration: TypeDeclaration<*> = classStack.peek()
         Printer.registerStaticCall(classDeclaration, n)
+
+        return super.visit(n, arg)
+    }
+
+    override fun visit(n: ObjectCreationExpr, arg: Void?): Visitable {
+        logger.debug { "Visiting object creation: ${n.typeAsString}" }
+
+        if (!methodStack.isEmpty()) {
+            logger.debug { "Object creation in method declaration: ${methodStack.peek().nameAsString}" }
+            val methodDeclaration: CallableDeclaration<*> = methodStack.peek()
+            Printer.registerObjectCreation(methodDeclaration, n)
+
+            return super.visit(n, arg)
+        }
+
+        logger.debug { "Object creation in class declaration: ${classStack.peek().nameAsString}" }
+        val classDeclaration: TypeDeclaration<*> = classStack.peek()
+        Printer.registerStaticObjectCreation(classDeclaration, n)
 
         return super.visit(n, arg)
     }
