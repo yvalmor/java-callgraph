@@ -240,7 +240,9 @@ class Printer private constructor() {
 
     private fun formatDotName(s: String): String = s.replace(Regex("[^a-zA-Z0-9_]"), "_")
     private fun formatDotArguments(s: String): String = s.replace("\"", "\\\"")
-    private fun formatDotLabel(s: String) = s.replace("<", "\\<").replace(">", "\\>")
+    private fun formatDotLabel(s: String) = s
+        .replace("<", "\\<").replace(">", "\\>")
+        .replace("{", "\\{").replace("}", "\\}")
         .replace("\n", "<br/>").replace("\r", "<br/>")
 
     private fun <T> Iterable<T>.joinToString(
